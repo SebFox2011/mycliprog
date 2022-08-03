@@ -1,0 +1,250 @@
+#!/usr/bin/env node
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const args = process.argv;
+const stream = require("stream");
+const readline = require("readline");
+const archiver = require("archiver");
+const Transform = stream.Transform || require("readable-stream").Transform;
+const extract = require("extract-zip");
+const axios = require("axios");
+const {parse}  =require ("node-html-parser");
+
+const commands = [
+  "read",
+  "write",
+  "copy",
+  "reverse",
+  "zipFile",
+  "zipDir",
+  "unzip",
+  "scrap",
+];
+console.log(os.hostname(), os.arch(), os.cpus().length);
+
+function read(filePath) {
+  const readableStream = fs.createReadStream(filePath, "utf-8");
+
+  readableStream.on("error", function (error) {
+    console.log(`error: ${error.message}`);
+  });
+
+  readableStream.on("data", (chunk) => {
+    console.log(chunk);
+  });
+}
+function write(filePath) {
+  const writableStream = fs.createWriteStream(filePath);
+
+  writableStream.on("error", (error) => {
+    console.log(
+      `An error occured while writing to the file. Error: ${error.message}`
+    );
+  });
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: "Enter a sentence: ",
+  });
+
+  rl.prompt();
+  rl.on("line", (line) => {
+    switch (line.trim()) {
+      case "exit":
+        rl.close();
+        break;
+      default:
+        sentence = line + "\n";
+        writableStream.write(sentence);
+        rl.prompt();
+        break;
+    }
+  }).on("close", () => {
+    writableStream.end();
+    writableStream.on("finish", () => {
+      console.log(`All your sentences have been written to ${filePath}`);
+    });
+    setTimeout(() => {
+      process.exit(0);
+    }, 100);
+  });
+}
+function copy(filePath) {
+  const inputStream = fs.createReadStream(filePath);
+  const fileCopyPath =
+    filePath.split(".")[0] + "-copy." + filePath.split(".")[1];
+  const outputStream = fs.createWriteStream(fileCopyPath);
+
+  inputStream.pipe(outputStream);
+
+  outputStream.on("finish", () => {
+    console.log(
+      `You have successfully created a ${filePath} copy. The new file name is ${fileCopyPath}.`
+    );
+  });
+}
+function reverse(filePath) {
+  const readStream = fs.createReadStream(filePath);
+  const reversedDataFilePath =
+    filePath.split(".")[0] + "-reversed." + filePath.split(".")[1];
+  const writeStream = fs.createWriteStream(reversedDataFilePath);
+
+  const reverseStream = new Transform({
+    transform(data, encoding, callback) {
+      const reversedData = data.toString().split("").reverse().join("");
+      this.push(reversedData);
+      callback();
+    },
+  });
+
+  readStream
+    .pipe(reverseStream)
+    .pipe(writeStream)
+    .on("finish", () => {
+      console.log(
+        `Finished reversing the contents of ${filePath} and saving the output to ${reversedDataFilePath}.`
+      );
+    });
+}
+function zipFile(filePath) {
+  const output = fs.createWriteStream(__dirname + "/example-output.zip");
+  const archive = archiver("zip");
+
+  output.on("close", function () {
+    console.log(
+      "archiver has been finalized and the output file descriptor has closed."
+    );
+  });
+
+  archive.on("error", function (err) {
+    throw err;
+  });
+
+  archive.pipe(output);
+
+  archive.append(fs.createReadStream(filePath), { name: filePath.toString() });
+  archive.finalize(function (err, bytes) {
+    if (err) {
+      throw err;
+    }
+
+    console.log(bytes + " total bytes");
+  });
+}
+function zipDir(path) {
+  const output = fs.createWriteStream(__dirname + "/example-output.zip");
+  const archive = archiver("zip");
+
+  output.on("close", function () {
+    console.log(
+      "archiver has been finalized and the output file descriptor has closed."
+    );
+  });
+
+  archive.on("error", function (err) {
+    throw err;
+  });
+
+  archive.pipe(output);
+
+  archive.directory(path);
+  archive.finalize(function (err, bytes) {
+    if (err) {
+      throw err;
+    }
+
+    console.log(bytes + " total bytes");
+  });
+}
+async function unzip(filePath) {
+  try {
+    await extract(filePath, { dir: path.join(__dirname, "extractZip") });
+    console.log("Extraction complete");
+  } catch (err) {
+    // handle any errors
+    console.log(err);
+  }
+}
+function scrap(url,filename) {
+  console.log("scrapping");
+  axios.get(url).then((response) => {
+    const root = parse(response.data);
+    const writableStream = fs.createWriteStream(`${filename}.html`);
+    const item = root.querySelector(".bloc-contenu-main").toString();
+
+    writableStream.write(item);
+    writableStream.end();
+
+  });
+}
+
+const getHelpText = function () {
+  const helpText = `
+    simplecli is a simple cli program to demonstrate how to handle files using streams.
+    usage:
+        mycliprogram <command> <path_to_file>
+
+        <command> can be:
+        read: Print a file's contents to the terminal
+        write: Write a message from the terminal to a file
+        copy: Create a copy of a file in the current directory
+        reverse: Reverse the content of a file and save its output to another file.
+        zip: zip a file and save in the current directory
+        scrap: launch scraping process
+
+        <path_to_file> is the path to the file you want to work with.
+    `;
+  console.log(helpText);
+};
+
+let command = "";
+
+if (args.length < 3) {
+  getHelpText();
+  return;
+} else if (args.length > 5) {
+  console.log("More arguments provided than expected");
+  getHelpText();
+  return;
+} else {
+  command = args[2];
+  if (!args[3]) {
+    console.log("This tool requires at least one path to a file");
+    getHelpText();
+    return;
+  }
+}
+
+switch (commands.indexOf(command)) {
+  case 0:
+    read(args[3]);
+    break;
+  case 1:
+    write(args[3]);
+    break;
+  case 2:
+    copy(args[3]);
+    break;
+  case 3:
+    reverse(args[3]);
+    break;
+  case 4:
+    zipFile(args[3]);
+    break;
+  case 5:
+    zipDir(args[3]);
+    break;
+  case 6:
+    unzip(args[3]);
+    break;
+  case 7:
+    scrap(args[3],args[4]);
+    break;
+  default:
+    console.log(
+      "You entered a wrong command. See help text below for supported functions"
+    );
+    getHelpText();
+    return;
+}
