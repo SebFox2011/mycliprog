@@ -1,6 +1,8 @@
 const axios = require("axios");
 const { parse } = require("node-html-parser");
 const fs = require("fs");
+const axiosRetry = require("axios-retry");
+axiosRetry(axios, { retries: 3 });
 
 const urls = [
   {
@@ -582,17 +584,18 @@ const urls = [
     filename: "31mars2021",
   },
 ];
-async function scrap(url, filename) {
+function scrap(url, filename) {
   axios.get(url).then((response) => {
     console.log("scrapping", filename);
     const root = parse(response.data);
     const writableStream = fs.createWriteStream(`${filename}.html`);
-    const item = root.querySelector(".bloc-contenu-main").toString();
+    const item = root.querySelector("style").toString(); //root.querySelector(".bloc-contenu-main").toString();
 
     writableStream.write(item);
     writableStream.end();
   });
 }
+
 for (const item of urls) {
   scrap(item.url, item.filename);
 }
